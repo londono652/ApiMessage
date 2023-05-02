@@ -7,7 +7,7 @@ username="#{user}#"
 password="#{password}#"
 
 endpoint_token=$base_url"/token"
-responsetoken=$(curl -X POST -d 'user=$username&password=$password' "$endpoint_token")
+responsetoken=$(curl -X POST -d -k 'user=$username&password=$password' "$endpoint_token")
 access_token=$(echo "$responsetoken" | jq -r '.access_token' )
 
 url_api=$base_url"/devops" 
@@ -18,7 +18,7 @@ header3="X-JWT-KWY: "$access_token
 
 data="{\"msg\":\"This is a test\",\"to\":\"Juan Perez\",\"from\":\"Rita Asturia\",\"timeToLifeSec\":45}"
 
-status=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "$header1" -H "$header2" -H "$header3" -d "$data" "$url_api")
+status=$(curl -s -o -k /dev/null -w "%{http_code}" -X POST -H "$header1" -H "$header2" -H "$header3" -d "$data" "$url_api")
 
 if [ "$status" -eq 200 ]; then
   echo "Smoketest se realizó con éxito. El status code es $status"

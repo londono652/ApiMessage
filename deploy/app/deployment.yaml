@@ -19,5 +19,11 @@ spec:
       containers:
       - name: api-demo
         image: 468899338760.dkr.ecr.us-east-1.amazonaws.com/pocjlondonos:#{buildtag}#
+        resources:
+           limits:
+             memory: 200Mi
+           requests:
+             cpu: 100m
+             memory: 200Mi
         ports:
         - containerPort: 8080
