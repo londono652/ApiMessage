@@ -1,0 +1,80 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.0.5'
+	id 'io.spring.dependency-management' version '1.1.0'
+	id 'jacoco'
+}
+
+group = 'com.demospring'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '17'
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation group: 'io.jsonwebtoken', name: 'jjwt', version: '0.9.1'
+	runtimeOnly 'com.h2database:h2'
+	compileOnly 'org.projectlombok:lombok'
+	implementation group: 'javax.xml.bind', name: 'jaxb-api', version: '2.4.0-b180830.0359'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	implementation 'org.jacoco:org.jacoco.core:0.8.7'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+jar {
+	enabled = false
+}
+
+jacoco {
+	toolVersion = "0.8.7"
+}
+
+test {
+	jacoco {
+		enabled = true
+	}
+}
+
+jacoco {
+	reportsDir = file("$buildDir/reports/jacoco")
+}
+
+
+jacocoTestReport {
+	reports {
+		xml.enabled true
+	}
+
+	dependsOn test // tests are required to run before generating the report
+
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: [
+					"com/demospring/**/MessageController.class",
+					"com/demospring/**/ConstantConfig.class",
+					"com/demospring/**/ApplicationExceptionHandler.class",
+					"com/demospring/**/MessageRepository.class",
+					"com/demospring/**/*Test.class",
+					"com/demospring/**/security/**/*.class",
+					"com/demospring/**/security/*.class"
+			])
+		}))
+	}
+}

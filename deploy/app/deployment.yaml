@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  labels:
+    app: demo
+spec:
+  replicas: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: demo
+  template:
+    metadata:
+      labels:
+        app: demo
+    spec:
+      containers:
+      - name: api-demo
+        image: 468899338760.dkr.ecr.us-east-1.amazonaws.com/pocjlondonos:#{buildtag}#
+        ports:
+        - containerPort: 8080

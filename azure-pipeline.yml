@@ -1,0 +1,194 @@
+name: $(Build.SourceBranchName).$(date:yyyyMMdd)$(rev:.r)
+
+trigger:
+  branches:
+    include:
+      - master
+      - develop
+      - release
+      - feature/*
+
+variables:
+  - group: 'message-api-values'
+  - name: 'artifactory.Repository'
+    value: 'build-message'
+  - name: 'projectName'
+    value: 'Message_Api'
+  - name: 'artifactName'
+    value: 'messageapi'
+
+stages:
+
+  - stage: Build
+    displayName: Build
+    jobs:
+      - job: CI
+        displayName: 'Build / CI'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: Gradle@2
+            displayName: 'Gradle -> Build'
+            inputs:
+              gradleWrapperFile: '$(System.DefaultWorkingDirectory)/gradlew'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              tasks: 'clean build -x test'
+              publishJUnitResults: false
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              sonarQubeRunAnalysis: false
+              spotBugsAnalysis: false
+
+          - task: Gradle@2
+            displayName: 'Gradle -> Unit Tests'
+            inputs:
+              gradleWrapperFile: '$(System.DefaultWorkingDirectory)/gradlew'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              tasks: 'test jacocoTestReport'
+              publishJUnitResults: false
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              sonarQubeRunAnalysis: false
+              spotBugsAnalysis: false
+            condition: succeeded()
+
+          - task: SonarCloudPrepare@1
+            displayName: "SonarCloud Preparation"
+            inputs:
+              SonarCloud: 'SonarCloud'
+              organization: 'londono652'
+              scannerMode: 'CLI'
+              configMode: 'manual'
+              cliProjectKey: 'londono652_ApiMessage'
+              cliProjectName: 'ApiMessage'
+              cliSources: '.'
+              extraProperties: 'sonar.java.binaries = $(System.DefaultWorkingDirectory)/build/libs'
+
+          - task: SonarCloudAnalyze@1
+            displayName: "SonarCloud Analysis"
+
+          - task: sonarcloud-buildbreaker@2
+            inputs:
+              SonarCloud: 'sonarcloud'
+              organization: 'londono652'
+
+          - task: SonarCloudPublish@1
+            inputs:
+              pollingTimeoutSec: '300'
+
+          - task: Docker@2
+            displayName: "Create Docker image"
+            inputs:
+              containerRegistry: 'dockerhub'
+              repository: 'londono652/message-api'
+              command: 'build'
+              Dockerfile: '**/Dockerfile'
+              buildContext: '.'
+              tags: $(Build.BuildNumber)
+
+          - script: |
+              sudo apt-get install wget apt-transport-https gnupg lsb-release
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+              echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+              sudo apt-get update
+              sudo apt-get install trivy
+              mkdir report
+              trivy image -s HIGH,CRITICAL londono652/message-api:$(Build.BuildNumber) | tee ./report/trivy-image-scan-report.txt
+            displayName: "Image scan by Trivy"
+            continueOnError: true
+
+          - task: ArchiveFiles@2
+            displayName: "Task -> Zip Artifact"
+            inputs:
+              rootFolderOrFile: $(System.DefaultWorkingDirectory)/build/libs
+              includeRootFolder: false
+              archiveType: tar
+              tarCompression: gz
+              archiveFile: "$(Build.StagingDirectory)/$(artifactName).tar.gz"
+            condition: succeeded()
+
+          - task: PublishBuildArtifacts@1
+            displayName: " Publish -> Artifact"
+            inputs:
+              PathtoPublish: $(Build.StagingDirectory)
+              ArtifactName: Artifact
+            condition: succeeded()
+
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish -> deploy infra files"
+            inputs:
+              PathtoPublish: $(System.DefaultWorkingDirectory)/deploy/infra
+              ArtifactName: DeployInfraFiles
+            condition: succeeded()
+
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish -> deploy app files"
+            inputs:
+              PathtoPublish: $(System.DefaultWorkingDirectory)/deploy/app
+              ArtifactName: DeployAppFiles
+            condition: succeeded()
+
+          - task: ECRPushImage@1
+            displayName: "Upload ECR Image"
+            inputs:
+              awsCredentials: 'awspoclondo'
+              regionName: 'us-east-1'
+              imageSource: 'imagename'
+              sourceImageName: 'londono652/message-api'
+              sourceImageTag: '$(Build.BuildNumber)'
+              repositoryName: 'pocjlondonos'
+              pushTag: '$(Build.BuildNumber)'
+
+  - stage: CD
+    displayName: CD-Deploy
+    dependsOn: Build
+    jobs:
+      - job: DeployK8s
+        displayName: 'Deploy-K8s'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: qetza.replacetokens.replacetokens-task.replacetokens@5
+            displayName: 'Replace tag in deployment'
+            inputs:
+              rootDirectory: deploy/app
+              targetFiles: deployment.yaml
+              tokenPattern: custom
+              tokenPrefix: '#{'
+              tokenSuffix: '}#'
+              writeBOM: false
+            condition: succeeded()
+          - task: Kubernetes@1
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'demo-kube-londo'
+              command: 'apply'
+              useConfigurationFile: true
+              configuration: '$(System.DefaultWorkingDirectory)/deploy/app/'
+              outputFormat: 'none'
+        condition: and(succeeded(), eq(variables['Build.SourceBranch'],'refs/heads/master'))
+
+  - stage: Test
+    displayName: 'Smoke Test'
+    dependsOn: CD
+    jobs:
+      - job: Test
+        displayName: 'Smoke Test'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: qetza.replacetokens.replacetokens-task.replacetokens@5
+            displayName: 'Replace tokens in smoke test'
+            inputs:
+              rootDirectory: smoketest
+              targetFiles: test-messageapi.sh
+              tokenPattern: custom
+              tokenPrefix: '#{'
+              tokenSuffix: '}#'
+              writeBOM: false
+            condition: succeeded()
+
+          - task: Bash@3
+            displayName: 'smoke test api-message'
+            inputs:
+              filePath: '$(System.DefaultWorkingDirectory)/smoketest/test-messageapi.sh'
