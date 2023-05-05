@@ -3,6 +3,7 @@ package com.demospring.messageapi.controllers;
 import com.demospring.messageapi.models.dto.MessageResponse;
 import com.demospring.messageapi.models.entity.Message;
 import com.demospring.messageapi.services.MessageService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +21,7 @@ public class MessageController {
     }
 
     @PostMapping()
-    public ResponseEntity<MessageResponse> create(@RequestBody Message message) {
+    public ResponseEntity<MessageResponse> create(@RequestBody @Valid Message message) {
         try {
             var _message = messageService.createMessage(message);
             var response = new MessageResponse(String.format("Hello, %s your message will be send", _message.getFrom()));
