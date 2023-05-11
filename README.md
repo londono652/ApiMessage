@@ -67,4 +67,4 @@ Deployment (CD)
 
 SmokeTest
 
-	Script en Shell (smoketest/test-messageapi.sh)con Prueba automatizada para validar el estado (200 ok) de la aplicación luego del deploy
+	Script en Shell (smoketest/test-messageapi.sh)con Prueba automatizada para validar el estado (200 ok) de la aplicación luego del deploy3443
